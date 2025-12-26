@@ -1,5 +1,5 @@
-# Use a modern Runpod PyTorch base image
-FROM runpod/pytorch:1.0.2-cu1281-torch271-ubuntu2204
+# Use a valid RunPod PyTorch base image
+FROM runpod/pytorch:2.9.1-py3.11-cuda12.6-devel-ubuntu22.04
 
 # Set environment variable for faster downloads
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
