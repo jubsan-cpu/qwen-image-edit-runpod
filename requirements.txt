@@ -6,3 +6,4 @@ peft
 safetensors
 pillow
 runpod
+hf-transfer
