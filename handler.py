@@ -13,7 +13,6 @@ from PIL import Image
 model_name = "Qwen/Qwen-Image-Edit-2509"
 pipeline = QwenImageEditPlusPipeline.from_pretrained(
     model_name,
-    trust_remote_code=True,  # Required for Qwen models
     torch_dtype=torch.bfloat16
 )
 pipeline.to("cuda")
