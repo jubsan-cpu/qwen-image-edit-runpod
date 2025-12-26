@@ -8,11 +8,26 @@ import base64
 from PIL import Image
 
 
-# Load model on startup using the official Qwen pipeline
-# Hugging Face automatically checks RunPod's cache and downloads if needed
+# Load model on startup - use network volume for persistent caching
+# CRITICAL: Container filesystem is ephemeral and gets wiped on pod stop
+# Network volume (/runpod-volume) is the ONLY way to persist models across cold starts
 model_name = "Qwen/Qwen-Image-Edit-2509"
+
+# Check if network volume is available for model caching
+MODELS_CACHE_DIR = "/runpod-volume"
+if not os.path.exists(MODELS_CACHE_DIR):
+    raise RuntimeError(
+        f"❌ FATAL: Network volume not found at {MODELS_CACHE_DIR}!\n"
+        f"You MUST attach a network volume to your RunPod endpoint.\n"
+        f"Without it, models will re-download on every cold start (11.7GB).\n"
+        f"Go to: Endpoint Settings → Network Volume → Attach volume at /runpod-volume"
+    )
+
+print(f"📁 Using network volume for model cache: {MODELS_CACHE_DIR}")
+
 pipeline = QwenImageEditPlusPipeline.from_pretrained(
     model_name,
+    cache_dir=MODELS_CACHE_DIR,
     torch_dtype=torch.bfloat16
 )
 pipeline.to("cuda")
@@ -20,21 +35,31 @@ pipeline.set_progress_bar_config(disable=None)
 print("✅ Pipeline loaded")
 
 
-# Load LoRA once on startup (from guaranteed fixed location in Docker image)
-LORA_PATH = "/models/lora/transformer_lora"  # Guaranteed location from Dockerfile
+# Load LoRA once on startup - download to network volume for persistence
+# CRITICAL: LoRA must also be on network volume, not in container filesystem
+LORA_REPO = "huawei-bayerlab/windowseat-reflection-removal-v1-0"
 LORA_SCALE = float(os.getenv('LORA_SCALE', 1.0))
-LORA_FILENAME = "pytorch_lora_weights.safetensors"
 
-# Load LoRA from fixed path
-print(f"🔄 Loading LoRA from {LORA_PATH} @ scale {LORA_SCALE}")
+from huggingface_hub import hf_hub_download
+
+print(f"🔄 Loading LoRA from network volume @ scale {LORA_SCALE}...")
+
+# Download LoRA if not cached (first run only)
+lora_file = hf_hub_download(
+    repo_id=LORA_REPO,
+    filename="transformer_lora/pytorch_lora_weights.safetensors",
+    cache_dir=os.path.join(MODELS_CACHE_DIR, "lora"),
+)
+
+# Load LoRA from network volume
 pipeline.load_lora_weights(
-    LORA_PATH,
-    weight_name=LORA_FILENAME,
+    os.path.dirname(lora_file),
+    weight_name="pytorch_lora_weights.safetensors",
     adapter_name="custom_lora"
 )
 
 pipeline.set_adapters(["custom_lora"], adapter_weights=[LORA_SCALE])
-print(f"✅ LoRA loaded from {LORA_PATH}/{LORA_FILENAME}")
+print(f"✅ LoRA loaded from network volume: {lora_file}")
 
 def handler(event):
     """
