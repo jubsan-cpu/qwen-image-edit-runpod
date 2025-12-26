@@ -28,9 +28,10 @@ print(f"📁 Using network volume for model cache: {MODELS_CACHE_DIR}")
 pipeline = QwenImageEditPlusPipeline.from_pretrained(
     model_name,
     cache_dir=MODELS_CACHE_DIR,
-    torch_dtype=torch.bfloat16
+    torch_dtype=torch.bfloat16,
+    device_map="auto"  # Automatically handles GPU placement
 )
-pipeline.to("cuda")
+# DO NOT call pipeline.to("cuda") - model is already on GPU and this causes OOM!
 pipeline.set_progress_bar_config(disable=None)
 print("✅ Pipeline loaded")
 
