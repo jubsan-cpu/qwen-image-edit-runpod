@@ -29,7 +29,7 @@ pipeline = QwenImageEditPlusPipeline.from_pretrained(
     model_name,
     cache_dir=MODELS_CACHE_DIR,
     torch_dtype=torch.bfloat16,
-    device_map="auto"  # Automatically handles GPU placement
+    device_map="balanced"  # "auto" not supported by this pipeline, use "balanced"
 )
 # DO NOT call pipeline.to("cuda") - model is already on GPU and this causes OOM!
 pipeline.set_progress_bar_config(disable=None)
