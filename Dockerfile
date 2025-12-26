@@ -16,7 +16,7 @@ RUN mkdir -p /models/lora && \
     python -c "from huggingface_hub import hf_hub_download; \
     hf_hub_download( \
         repo_id='huawei-bayerlab/windowseat-reflection-removal-v1-0', \
-        filename='pytorch_lora_weights.safetensors', \
+        filename='transformer_lora/pytorch_lora_weights.safetensors', \
         local_dir='/models/lora', \
         local_dir_use_symlinks=False \
     )"

@@ -22,7 +22,7 @@ print("✅ Pipeline loaded")
 
 
 # Load LoRA once on startup (from guaranteed fixed location in Docker image)
-LORA_PATH = "/models/lora"  # Guaranteed location from Dockerfile
+LORA_PATH = "/models/lora/transformer_lora"  # Guaranteed location from Dockerfile
 LORA_SCALE = float(os.getenv('LORA_SCALE', 1.0))
 LORA_FILENAME = "pytorch_lora_weights.safetensors"
 
