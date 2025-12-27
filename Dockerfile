@@ -1,7 +1,7 @@
 # Use a valid RunPod PyTorch base image
 FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
-# Copy requirements file
+# Copy requirements file (!)
 WORKDIR /app
 COPY requirements.txt .
 
