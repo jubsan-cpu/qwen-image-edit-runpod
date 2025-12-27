@@ -14,12 +14,12 @@ cache_dir = "/runpod-volume"
 if not os.path.exists(cache_dir):
     raise RuntimeError(f"❌ Network volume not found at {cache_dir}!")
 
-print(f"🚀 Loading {model_id} in bfloat16...")
+print(f"🚀 Loading {model_id} in float16...")
 # Matching official pattern: float16/bfloat16 loading then .to('cuda')
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id, 
     cache_dir=cache_dir, 
-    torch_dtype=torch.bfloat16
+    torch_dtype=torch.float16
 )
 pipe.to("cuda")
 pipe.set_progress_bar_config(disable=None)
