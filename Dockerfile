@@ -1,18 +1,15 @@
 # Use a valid RunPod PyTorch base image (Upgraded to 2.5.1 for GQA support)
-FROM mnb3000/runpod-pytorch:2.5.1-py3.11-cuda12.4.1-devel-ubuntu22.04
+FROM runpod/pytorch:1.0.3-cu1290-torch290-ubuntu2204
 
-# Copy requirements file (!)
+# Setup working directory
 WORKDIR /app
 COPY requirements.txt .
 
-# Install dependencies from requirements.txt
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy handler file
+# Copy only the handler script
 COPY handler.py .
 
-# Expose the API port
-EXPOSE 80
-
-# Load Balancing workers start the FastAPI server directly
+# Run the handler directly
 CMD ["python", "handler.py"]
