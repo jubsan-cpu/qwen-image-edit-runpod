@@ -11,5 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy handler file
 COPY handler.py .
 
-# Set entrypoint
+# Expose the API port
+EXPOSE 80
+
+# Load Balancing workers start the FastAPI server directly
 CMD ["python", "handler.py"]

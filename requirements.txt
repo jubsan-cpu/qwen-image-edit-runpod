@@ -6,3 +6,8 @@ peft
 safetensors
 pillow
 runpod
+fastapi
+pydantic
+uvicorn
+huggingface-hub
+

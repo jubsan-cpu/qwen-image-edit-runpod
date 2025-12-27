@@ -1,87 +1,131 @@
-import runpod
+from fastapi import FastAPI, Response, status
+from pydantic import BaseModel
 import os
+import torch
 from diffusers import QwenImageEditPlusPipeline
 from diffusers.utils import load_image
-import torch
 from io import BytesIO
 import base64
 from PIL import Image
-
-
-# Load model on startup - use network volume for persistent caching
-# CRITICAL: Container filesystem is ephemeral and gets wiped on pod stop
-# Network volume (/runpod-volume) is the ONLY way to persist models across cold starts
-model_name = "Qwen/Qwen-Image-Edit-2509"
-
-# Check if network volume is available for model caching
-MODELS_CACHE_DIR = "/runpod-volume"
-if not os.path.exists(MODELS_CACHE_DIR):
-    raise RuntimeError(
-        f"❌ FATAL: Network volume not found at {MODELS_CACHE_DIR}!\n"
-        f"You MUST attach a network volume to your RunPod endpoint.\n"
-        f"Without it, models will re-download on every cold start (11.7GB).\n"
-        f"Go to: Endpoint Settings → Network Volume → Attach volume at /runpod-volume"
-    )
-
-print(f"📁 Using network volume for model cache: {MODELS_CACHE_DIR}")
-
-pipeline = QwenImageEditPlusPipeline.from_pretrained(
-    model_name,
-    cache_dir=MODELS_CACHE_DIR,
-    torch_dtype=torch.bfloat16,
-    device_map="balanced"  # "auto" not supported by this pipeline, use "balanced"
-)
-# DO NOT call pipeline.to("cuda") - model is already on GPU and this causes OOM!
-pipeline.set_progress_bar_config(disable=None)
-print("✅ Pipeline loaded")
-
-
-# Load LoRA once on startup - download to network volume for persistence
-# CRITICAL: LoRA must also be on network volume, not in container filesystem
-LORA_REPO = "huawei-bayerlab/windowseat-reflection-removal-v1-0"
-LORA_SCALE = float(os.getenv('LORA_SCALE', 1.0))
-
 from huggingface_hub import hf_hub_download
+import uvicorn
+import threading
+from contextlib import asynccontextmanager
 
-print(f"🔄 Loading LoRA from network volume @ scale {LORA_SCALE}...")
+# --- STATE MANAGEMENT ---
+class AppState:
+    def __init__(self):
+        self.pipeline = None
+        self.is_ready = False
+        self.error = None
 
-# Download LoRA if not cached (first run only)
-lora_file = hf_hub_download(
-    repo_id=LORA_REPO,
-    filename="transformer_lora/pytorch_lora_weights.safetensors",
-    cache_dir=os.path.join(MODELS_CACHE_DIR, "lora"),
-)
+state = AppState()
 
-# Load LoRA from network volume
-pipeline.load_lora_weights(
-    os.path.dirname(lora_file),
-    weight_name="pytorch_lora_weights.safetensors",
-    adapter_name="custom_lora"
-)
-
-pipeline.set_adapters(["custom_lora"], adapter_weights=[LORA_SCALE])
-print(f"✅ LoRA loaded from network volume: {lora_file}")
-
-def handler(event):
-    """
-    Runpod handler function. Receives job input and returns output.
-    """
+def load_models():
+    """Background task to load models without blocking server startup."""
     try:
-        input_data = event["input"]
-        image_url = input_data.get("image_url")
+        print("🚀 Starting model loading in background...")
+        
+        model_name = "Qwen/Qwen-Image-Edit-2509"
+        MODELS_CACHE_DIR = "/runpod-volume"
 
-        if not image_url:
-            return {"error": "Missing 'image_url' parameter."}
+        if not os.path.exists(MODELS_CACHE_DIR):
+            raise RuntimeError(
+                f"❌ FATAL: Network volume not found at {MODELS_CACHE_DIR}!\n"
+                f"You MUST attach a network volume to your RunPod endpoint."
+            )
 
-        # Fixed prompt for reflection removal
+        print(f"📁 Using cache directory: {MODELS_CACHE_DIR}")
+
+        # Load pipeline
+        state.pipeline = QwenImageEditPlusPipeline.from_pretrained(
+            model_name,
+            cache_dir=MODELS_CACHE_DIR,
+            torch_dtype=torch.bfloat16,
+            device_map="balanced"
+        )
+        state.pipeline.set_progress_bar_config(disable=None)
+        
+        # Load LoRA
+        LORA_REPO = "huawei-bayerlab/windowseat-reflection-removal-v1-0"
+        LORA_SCALE = float(os.getenv('LORA_SCALE', 1.0))
+
+        print(f"🔄 Loading LoRA @ scale {LORA_SCALE}...")
+        lora_file = hf_hub_download(
+            repo_id=LORA_REPO,
+            filename="transformer_lora/pytorch_lora_weights.safetensors",
+            cache_dir=os.path.join(MODELS_CACHE_DIR, "lora"),
+        )
+
+        state.pipeline.load_lora_weights(
+            os.path.dirname(lora_file),
+            weight_name="pytorch_lora_weights.safetensors",
+            adapter_name="custom_lora"
+        )
+        state.pipeline.set_adapters(["custom_lora"], adapter_weights=[LORA_SCALE])
+        
+        state.is_ready = True
+        print("✅ Models loaded and worker is READY")
+    except Exception as e:
+        state.error = str(e)
+        print(f"❌ Critical Error during loading: {state.error}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start loading in a separate thread so the server starts immediately
+    thread = threading.Thread(target=load_models)
+    thread.start()
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+# --- MODELS ---
+class InputData(BaseModel):
+    image_url: str
+
+class RunPodRequest(BaseModel):
+    input: InputData
+
+# --- ENDPOINTS ---
+
+@app.get("/ping")
+async def health_check(response: Response):
+    """
+    RunPod Health Check:
+    - 200: Healthy (Ready to work)
+    - 204: Initializing (Cold start in progress)
+    - 500: Error
+    """
+    if state.error:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"status": "error", "message": state.error}
+    
+    if not state.is_ready:
+        response.status_code = status.HTTP_204_NO_CONTENT
+        return None # 204 has no body
+    
+    return {"status": "healthy"}
+
+@app.post("/")
+@app.post("/generate")
+async def generate(request: RunPodRequest, response: Response):
+    if not state.is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"error": "Worker is still initializing", "success": False}
+    
+    if state.error:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"error": state.error, "success": False}
+
+    try:
+        image_url = request.input.image_url
         prompt = "remove reflections from the image"
 
-        # Load input image
+        print(f"📸 Processing image: {image_url}")
         input_image = load_image(image_url)
         
-        # Use torch.inference_mode() for optimal performance
         with torch.inference_mode():
-            output = pipeline(
+            output = state.pipeline(
                 image=[input_image],
                 prompt=prompt,
                 negative_prompt=" ",
@@ -97,9 +141,17 @@ def handler(event):
         output_image.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-        return {"output_image_base64": img_str, "prompt": prompt}
+        return {
+            "output_image_base64": img_str, 
+            "prompt": prompt,
+            "success": True
+        }
     except Exception as e:
-        return {"error": str(e)}
+        print(f"❌ Inference Error: {str(e)}")
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {"error": str(e), "success": False}
 
-# Required by Runpod
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 80))
+    print(f"📡 Serving on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
