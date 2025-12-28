@@ -7,4 +7,7 @@ safetensors
 pillow
 runpod
 huggingface-hub
+bitsandbytes
+imageio
+torchvision
 
