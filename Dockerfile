@@ -1,6 +1,5 @@
 # Use a valid RunPod PyTorch base image (Upgraded to 2.5.1 for GQA support)
-FROM runpod/pytorch:1.0.3-cu1290-torch290-ubuntu2204
-
+FROM runpod/pytorch:1.0.3-cu1300-torch291-ubuntu2404
 # Setup working directory
 WORKDIR /app
 COPY requirements.txt .
