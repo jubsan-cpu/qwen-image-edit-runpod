@@ -138,18 +138,17 @@ def accumulate_tile(tile_out, x, y, tile_size, acc, wsum):
     wsum[y:y+h, x:x+w] += tile_mask
 
 @torch.no_grad()  # From official windowseat.py - prevents gradient accumulation
-def process_high_res(pil_img):
+def process_high_res(pil_img, max_res=1280): # Default to 1280 if not specified
     W_orig, H_orig = pil_img.size
     
-    # --- Smart 2K Cap Logic ---
-    MAX_RES = 2560 # 2K resolution cap
-    if max(W_orig, H_orig) > MAX_RES:
-        scale = MAX_RES / max(W_orig, H_orig)
+    # --- Resolution Cap Logic ---
+    if max(W_orig, H_orig) > max_res:
+        scale = max_res / max(W_orig, H_orig)
         new_W, new_H = int(W_orig * scale), int(H_orig * scale)
         pil_img = pil_img.resize((new_W, new_H), Image.LANCZOS)
-        print(f"📏 Downscaled to 2K: {W_orig}x{H_orig} → {new_W}x{new_H}")
+        print(f"📏 Downscaled to {max_res}px limit: {W_orig}x{H_orig} → {new_W}x{new_H}")
     else:
-        print(f"🖼️ Processing at original resolution: {W_orig}x{H_orig}")
+        print(f"🖼️ Processing at original resolution: {W_orig}x{H_orig} (Limit: {max_res}px)")
     # --------------------------
 
     W_working, H_working = pil_img.size
@@ -247,8 +246,21 @@ def handler(event):
         image_url = data.get("image_url")
         if not image_url: return {"error": "Missing 'image_url'"}
 
+        # Determine Max Resolution based on Plan
+        plan_title = data.get("title", "free") # Default to free
+        
+        if plan_title == "pro_plus":
+            max_res = 4096 # 4K
+        elif plan_title == "pro":
+            max_res = 2560 # 2K
+        else: 
+            # "free" or unknown
+            max_res = 1280 # HD
+            
+        print(f"📝 Plan: {plan_title} | Max Res: {max_res}px")
+
         input_image = load_image(image_url).convert("RGB")
-        output_image = process_high_res(input_image)
+        output_image = process_high_res(input_image, max_res=max_res)
 
         # Log VRAM usage stats
         if torch.cuda.is_available():
