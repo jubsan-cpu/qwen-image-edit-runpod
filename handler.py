@@ -8,7 +8,6 @@ from PIL import Image
 import torchvision.transforms.functional as TF
 from diffusers import (
     AutoencoderKLQwenImage,
-    BitsAndBytesConfig,
     QwenImageEditPipeline,
     QwenImageTransformer2DModel,
 )
@@ -19,7 +18,7 @@ from diffusers.utils import load_image
 # --- 1. Startup: Official 4-Bit loading logic ---
 device = torch.device("cuda")
 cache_dir = "/runpod-volume"
-uri_base = "Qwen/Qwen-Image-Edit-2509"
+uri_base = "ovedrive/Qwen-Image-Edit-2511-4bit"
 uri_lora = "huawei-bayerlab/windowseat-reflection-removal-v1-0"
 
 if not os.path.exists(cache_dir):
@@ -35,14 +34,8 @@ def fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name, subfold
 vae = AutoencoderKLQwenImage.from_pretrained(uri_base, subfolder="vae", torch_dtype=torch.bfloat16, device_map=device, cache_dir=cache_dir)
 vae.to(device, dtype=torch.bfloat16)
 
-# 1b. Load Transformer in 4-bit (NF4)
-nf4_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    llm_int8_skip_modules=["transformer_blocks.0.img_mod"],
-)
-transformer = QwenImageTransformer2DModel.from_pretrained(uri_base, subfolder="transformer", torch_dtype=torch.bfloat16, quantization_config=nf4_config, device_map=device, cache_dir=cache_dir)
+# 1b. Load Transformer (4-bit settings are automatically loaded from config.json)
+transformer = QwenImageTransformer2DModel.from_pretrained(uri_base, subfolder="transformer", torch_dtype=torch.bfloat16, device_map=device, cache_dir=cache_dir)
 
 # 1c. Load LoRA
 lora_config = LoraConfig.from_pretrained(uri_lora, subfolder="transformer_lora", cache_dir=cache_dir)
