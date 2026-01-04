@@ -25,14 +25,16 @@ uri_lora = "huawei-bayerlab/windowseat-reflection-removal-v1-0"
 if not os.path.exists(cache_dir):
     raise RuntimeError(f"❌ Network volume not found at {cache_dir}!")
 
-print(f"🚀 Loading Network Components (4-bit mode)...")
+# Check if models already cached → skip network calls
+models_local = os.path.exists(os.path.join(cache_dir, "hub"))
+print(f"🚀 Loading Components (4-bit, local={models_local})...")
 
 def fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name, subfolder=None):
-    file_path = hf_hub_download(pretrained_model_name_or_path_or_dict, weight_name, subfolder=subfolder, cache_dir=cache_dir)
+    file_path = hf_hub_download(pretrained_model_name_or_path_or_dict, weight_name, subfolder=subfolder, cache_dir=cache_dir, local_files_only=models_local)
     return safetensors.torch.load_file(file_path)
 
 # 1a. Load VAE
-vae = AutoencoderKLQwenImage.from_pretrained(uri_base, subfolder="vae", torch_dtype=torch.bfloat16, device_map=device, cache_dir=cache_dir)
+vae = AutoencoderKLQwenImage.from_pretrained(uri_base, subfolder="vae", torch_dtype=torch.bfloat16, device_map=device, cache_dir=cache_dir, local_files_only=models_local)
 vae.to(device, dtype=torch.bfloat16)
 
 # 1b. Load Transformer in 4-bit (NF4)
@@ -42,7 +44,7 @@ nf4_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
     llm_int8_skip_modules=["transformer_blocks.0.img_mod"],
 )
-transformer = QwenImageTransformer2DModel.from_pretrained(uri_base, subfolder="transformer", torch_dtype=torch.bfloat16, quantization_config=nf4_config, device_map=device, cache_dir=cache_dir)
+transformer = QwenImageTransformer2DModel.from_pretrained(uri_base, subfolder="transformer", torch_dtype=torch.bfloat16, quantization_config=nf4_config, device_map=device, cache_dir=cache_dir, local_files_only=models_local)
 
 # 1c. Load LoRA
 lora_config = LoraConfig.from_pretrained(uri_lora, subfolder="transformer_lora", cache_dir=cache_dir)
