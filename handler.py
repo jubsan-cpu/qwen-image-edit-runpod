@@ -19,7 +19,7 @@ from diffusers.utils import load_image
 # --- 1. Startup: Official 4-Bit loading logic ---
 device = torch.device("cuda")
 cache_dir = "/runpod-volume"
-uri_base = "ovedrive/Qwen-Image-Edit-2511-4bit"
+uri_base = "Qwen/Qwen-Image-Edit-2511"
 uri_lora = "huawei-bayerlab/windowseat-reflection-removal-v1-0"
 
 if not os.path.exists(cache_dir):
