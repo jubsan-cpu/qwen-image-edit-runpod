@@ -26,7 +26,8 @@ if not os.path.exists(cache_dir):
     raise RuntimeError(f"❌ Network volume not found at {cache_dir}!")
 
 # Check if models already cached → skip network calls
-models_local = os.path.exists(os.path.join(cache_dir, "hub"))
+# HuggingFace caches models as models--{org}--{repo}/ directly in cache_dir (no "hub" subfolder)
+models_local = os.path.exists(os.path.join(cache_dir, "models--Qwen--Qwen-Image-Edit-2511"))
 print(f"🚀 Loading Components (4-bit, local={models_local})...")
 
 def fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name, subfolder=None):
