@@ -31,8 +31,14 @@ def fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name, subfold
     return safetensors.torch.load_file(file_path)
 
 # 1a. Load VAE
-vae = AutoencoderKLQwenImage.from_pretrained(uri_base, subfolder="vae", torch_dtype=torch.bfloat16, device_map=device, cache_dir=cache_dir)
-vae.to(device, dtype=torch.bfloat16)
+vae = AutoencoderKLQwenImage.from_pretrained(
+    uri_base, 
+    subfolder="vae", 
+    torch_dtype=torch.bfloat16, 
+    device_map=device, 
+    cache_dir=cache_dir,
+    quantization_config=None # Explicitly disable quantization for VAE as the repo config is malformed
+)
 
 # 1b. Load Transformer (4-bit settings are automatically loaded from config.json)
 transformer = QwenImageTransformer2DModel.from_pretrained(uri_base, subfolder="transformer", torch_dtype=torch.bfloat16, device_map=device, cache_dir=cache_dir)
